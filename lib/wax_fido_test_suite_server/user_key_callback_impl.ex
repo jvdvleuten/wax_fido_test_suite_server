@@ -3,7 +3,7 @@ defmodule WaxFidoTestSuiteServerWeb.UserKeyCallbackImpl do
 
   @impl true
   def user_info(conn) do
-    %{id: user_id(conn)}
+    %{id: user_handle_id(user_id(conn))}
   end
 
   @impl true
@@ -23,11 +23,12 @@ defmodule WaxFidoTestSuiteServerWeb.UserKeyCallbackImpl do
 
   @impl true
   def register_key(conn, credential_id, authenticator_data, _attestation_result) do
-    true = :ets.insert(:wax_fido_test_user_keys, {
-      {user_id(conn), credential_id},
-      authenticator_data.attested_credential_data.credential_public_key,
-      authenticator_data.sign_count
-    })
+    true =
+      :ets.insert(:wax_fido_test_user_keys, {
+        {user_id(conn), credential_id},
+        authenticator_data.attested_credential_data.credential_public_key,
+        authenticator_data.sign_count
+      })
 
     conn
   end
@@ -35,11 +36,9 @@ defmodule WaxFidoTestSuiteServerWeb.UserKeyCallbackImpl do
   @impl true
   def user_keys(conn) do
     :ets.match_object(:wax_fido_test_user_keys, {{user_id(conn), :_}, :_, :_})
-    |> Enum.map(
-      fn {{_user_id, credential_id}, cose_key, sign_count} ->
-        {credential_id, %{cose_key: cose_key, sign_count: sign_count}}
-      end
-    )
+    |> Enum.map(fn {{_user_id, credential_id}, cose_key, sign_count} ->
+      {credential_id, %{cose_key: cose_key, sign_count: sign_count}}
+    end)
   end
 
   @impl true
@@ -61,5 +60,10 @@ defmodule WaxFidoTestSuiteServerWeb.UserKeyCallbackImpl do
     conn
     |> Plug.Conn.fetch_session()
     |> Plug.Conn.get_session(:user_id)
+  end
+
+  defp user_handle_id(username) when is_binary(username) do
+    :crypto.hash(:sha256, username)
+    |> Base.url_encode64(padding: false)
   end
 end

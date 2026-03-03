@@ -1,5 +1,43 @@
 use Mix.Config
 
+http_port =
+  System.get_env("WAX_FIDO_HTTP_PORT", "4000")
+  |> String.to_integer()
+
+https_port =
+  System.get_env("WAX_FIDO_HTTPS_PORT", "4001")
+  |> String.to_integer()
+
+origin = System.get_env("WAX_FIDO_ORIGIN", "https://localhost:4001")
+
+metadata_dir =
+  System.get_env("WAX_FIDO_METADATA_DIR", "priv/fido2_metadata/metadataStatements")
+
+mds_root_cert_path =
+  System.get_env("WAX_FIDO_MDS_ROOT_CERT_PATH", "priv/fido2_metadata/MDS3ROOT.crt")
+
+mds_execute_endpoints =
+  System.get_env("WAX_FIDO_MDS_EXECUTE_ENDPOINTS", "")
+  |> String.split([",", "\n"], trim: true)
+
+mds_skip_execute_endpoints =
+  System.get_env("WAX_FIDO_MDS_SKIP_EXECUTE_ENDPOINTS", "")
+  |> String.split([",", "\n"], trim: true)
+
+cors_allowed_origins =
+  case System.get_env("WAX_FIDO_ALLOWED_ORIGINS", "") |> String.split([",", "\n"], trim: true) do
+    [] -> [origin, "null"]
+    values -> values
+  end
+
+mds_connect_timeout_ms =
+  System.get_env("WAX_FIDO_MDS_CONNECT_TIMEOUT_MS", "2000")
+  |> String.to_integer()
+
+mds_request_timeout_ms =
+  System.get_env("WAX_FIDO_MDS_REQUEST_TIMEOUT_MS", "5000")
+  |> String.to_integer()
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
@@ -7,9 +45,15 @@ use Mix.Config
 # watchers to your application. For example, we use it
 # with webpack to recompile .js and .css sources.
 config :wax_fido_test_suite_server, WaxFidoTestSuiteServerWeb.Endpoint,
-  http: [port: 4000],
+  http: [port: http_port],
+  https: [
+    port: https_port,
+    cipher_suite: :strong,
+    keyfile: "priv/cert/selfsigned_key.pem",
+    certfile: "priv/cert/selfsigned.pem"
+  ],
   debug_errors: true,
-  code_reloader: true,
+  code_reloader: false,
   check_origin: false,
   watchers: []
 
@@ -47,6 +91,19 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :wax_, :origin, "http://localhost:4000"
+config :wax_, :origin, origin
 
-config :wax_, :metadata_dir, "/home/tanguilp/coding/wax/metadata/metadata/metadataStatements/"
+config :wax_, :rp_id, :auto
+config :wax_, :metadata_dir, metadata_dir
+config :wax_, :tpm_allow_conformance_fake_manufacturer, true
+
+config :wax_fido_test_suite_server, :mds_root_cert_path, mds_root_cert_path
+config :wax_fido_test_suite_server, :mds_execute_endpoints, mds_execute_endpoints
+config :wax_fido_test_suite_server, :mds_skip_execute_endpoints, mds_skip_execute_endpoints
+config :wax_fido_test_suite_server, :cors_allowed_origins, cors_allowed_origins
+config :wax_fido_test_suite_server, :mds_connect_timeout_ms, mds_connect_timeout_ms
+config :wax_fido_test_suite_server, :mds_request_timeout_ms, mds_request_timeout_ms
+
+if File.exists?(Path.join(__DIR__, "dev.local.exs")) do
+  import_config "dev.local.exs"
+end

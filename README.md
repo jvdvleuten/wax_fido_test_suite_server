@@ -6,31 +6,34 @@ OTP25+
 
 ## Configuration
 
-### Enable TPM's test ID
+Use local-only config overrides so public commits stay clean.
 
-In the `Wax` library, in the `lib/wax/attestation_statement_format/tpm.ex` file, uncomment
-the following line:
+1. Copy the local template:
 
+```bash
+cp config/dev.local.exs.example config/dev.local.exs
 ```
-  #++ ["id:FFFFF1D0"] # fake ID for conformance tool testing, uncomment only for testing
-```
 
-The test suite uses a fake manufacturer ID in some TPM tests.
+`config/dev.local.exs` is gitignored. Put your personal Cloudflare and MDS values there.
 
-One way to do it is:
-- to remove the `wax` directory in `_build`
-- to edit Wax's source code in the `deps` directory
-- recompile
-
-### Setting `origin`
-
-Don't forget to configure the origin. By default, in development environment, it is set to:
+2. For TPM conformance tests, use config (no source edits in `wax` needed):
 
 ```elixir
-config :wax, :origin, "http://localhost:4000"
+config :wax_, :tpm_allow_conformance_fake_manufacturer, true
 ```
 
-but host or port could change depending on your configuration.
+3. You can also set values with environment variables:
+
+- `WAX_FIDO_ORIGIN`
+- `WAX_FIDO_HTTP_PORT`
+- `WAX_FIDO_HTTPS_PORT`
+- `WAX_FIDO_MDS_ROOT_CERT_PATH`
+- `WAX_FIDO_MDS_EXECUTE_ENDPOINTS` (comma/newline separated)
+- `WAX_FIDO_MDS_SKIP_EXECUTE_ENDPOINTS` (comma/newline separated)
+- `WAX_FIDO_ALLOWED_ORIGINS` (comma/newline separated, defaults to `[WAX_FIDO_ORIGIN, "null"]`)
+- `WAX_FIDO_MDS_CONNECT_TIMEOUT_MS`
+- `WAX_FIDO_MDS_REQUEST_TIMEOUT_MS`
+- `WAX_FIDO_WAX_PATH` (optional local path to a `wax` checkout; defaults to Hex package)
 
 ### Downloading the test suite
 
@@ -38,35 +41,50 @@ It is not publicly available. See
 [https://fidoalliance.org/certification/functional-certification/conformance/](https://fidoalliance.org/certification/functional-certification/conformance/)
 to be granted access.
 
-### Configuring metadata
+### Cloudflare + MDS3 setup
 
-Launch the executable (beware, it is **NOT** signed - you better run it inside a VM).
+Start a quick tunnel to your local HTTPS server:
 
-On the main screen, click on "FIDO2 Tests".
+```bash
+cloudflared tunnel --protocol http2 --url https://127.0.0.1:4101 --no-tls-verify
+cloudflared tunnel --protocol http2 --url https://127.0.0.1:4001 --no-tls-verify
+```
 
-Click on "DOWNLOAD SERVER METADATA" to load metadata. This is metadata used for testing and must
-be loaded in Wax instead of the production metadata loaded from the FIDO2 Web Service. To do so:
-- create the `/priv/fido2_metadata/` directory in this project
-- unzip the metadata archive
-- copy the JSON files into `/priv/fido2_metadata`
-- configure metadata loading from directory, for instance in `conf/dev/exs`:
+Copy the generated `https://<name>.trycloudflare.com` URL into:
 
-```elixir
-config :wax, :metadata_dir, :wax_fido_test_suite_server
+- `config/dev.local.exs` as `config :wax_, :origin, ...`
+- `config/dev.local.exs` as `config :wax_fido_test_suite_server, :cors_allowed_origins, [...]`
+- FIDO conformance app `Server URL`
+
+For the official tool flow, include `"null"` in `:cors_allowed_origins`.
+
+Then open [https://mds3.fido.tools/](https://mds3.fido.tools/) and:
+
+1. Enter the same server URL.
+2. Generate the 5 execute endpoints.
+3. Put them into `:mds_execute_endpoints` in `config/dev.local.exs`.
+4. Put the revoked-leaf endpoint into `:mds_skip_execute_endpoints`.
+
+Download root cert and save it to the configured path:
+
+```bash
+mkdir -p priv/fido2_metadata
+curl -fL https://mds3.fido.tools/pki/MDS3ROOT.crt -o priv/fido2_metadata/MDS3ROOT.crt
 ```
 
 ### Starting the test server
 
 ```bash
-iex -S mix phx.server
+MIX_ENV=dev mix phx.server
 ```
-
-will launch the server in development mode (environment is not important for our purpose).
 
 ### Launch tests
 
-Then, select "Server tests" (except metadata) on the right menu and set the "Server URL" to
-`http://localhost:4000`. Then click on "RUN".
+In the FIDO app:
+
+1. Open `FIDO2 Tests`.
+2. Set `Server URL` to your current Cloudflare tunnel URL.
+3. Run `Server tests`.
 
 ## Testing from a Linux host
 
